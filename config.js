@@ -52,6 +52,11 @@ export function getSystemPrompt() {
   return cfg.system_prompt || '';
 }
 
+export function getOverrideUserSystem() {
+  const cfg = getConfig();
+  return cfg.override_user_system === true;
+}
+
 export function getModelReasoning(modelId) {
   const model = getModelById(modelId);
   if (!model || !model.reasoning) {

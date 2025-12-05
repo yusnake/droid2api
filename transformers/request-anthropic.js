@@ -1,5 +1,5 @@
 import { logDebug } from '../logger.js';
-import { getSystemPrompt, getModelReasoning, getUserAgent } from '../config.js';
+import { getSystemPrompt, getModelReasoning, getUserAgent, getOverrideUserSystem } from '../config.js';
 
 export function transformToAnthropic(openaiRequest) {
   logDebug('Transforming OpenAI request to Anthropic format');
@@ -82,19 +82,30 @@ export function transformToAnthropic(openaiRequest) {
     }
   }
 
-  // Add system parameter with system prompt prepended
+  // 处理 system，根据 override_user_system 配置决定行为
   const systemPrompt = getSystemPrompt();
-  if (systemPrompt || systemContent.length > 0) {
-    anthropicRequest.system = [];
-    // Prepend system prompt as first element if it exists
+  const overrideUserSystem = getOverrideUserSystem();
+
+  if (overrideUserSystem) {
+    // Override 模式：只使用配置的 systemPrompt，丢弃用户的 system
     if (systemPrompt) {
-      anthropicRequest.system.push({
+      anthropicRequest.system = [{
         type: 'text',
         text: systemPrompt
-      });
+      }];
     }
-    // Add user-provided system content
-    anthropicRequest.system.push(...systemContent);
+  } else {
+    // 默认模式：配置的 systemPrompt + 用户的 system
+    if (systemPrompt || systemContent.length > 0) {
+      anthropicRequest.system = [];
+      if (systemPrompt) {
+        anthropicRequest.system.push({
+          type: 'text',
+          text: systemPrompt
+        });
+      }
+      anthropicRequest.system.push(...systemContent);
+    }
   }
 
   // Transform tools if present

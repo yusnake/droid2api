@@ -1,6 +1,6 @@
 import express from 'express';
 import fetch from 'node-fetch';
-import { getConfig, getModelById, getEndpointByType, getSystemPrompt, getModelReasoning, getRedirectedModelId, getModelProvider } from './config.js';
+import { getConfig, getModelById, getEndpointByType, getSystemPrompt, getModelReasoning, getRedirectedModelId, getModelProvider, getOverrideUserSystem } from './config.js';
 import { logInfo, logDebug, logError, logRequest, logResponse } from './logger.js';
 import { transformToAnthropic, getAnthropicHeaders } from './transformers/request-anthropic.js';
 import { transformToOpenAI, getOpenAIHeaders } from './transformers/request-openai.js';
@@ -440,21 +440,33 @@ async function handleDirectMessages(req, res) {
     const isStreaming = anthropicRequest.stream === true;
     const headers = getAnthropicHeaders(authHeader, clientHeaders, isStreaming, modelId, provider);
 
-    // 注入系统提示到 system 字段，并更新重定向后的模型ID
+    // 处理 system 字段，根据 override_user_system 配置决定行为
     const systemPrompt = getSystemPrompt();
+    const overrideUserSystem = getOverrideUserSystem();
     const modifiedRequest = { ...anthropicRequest, model: modelId };
-    if (systemPrompt) {
-      if (modifiedRequest.system && Array.isArray(modifiedRequest.system)) {
-        // 如果已有 system 数组，则在最前面插入系统提示
-        modifiedRequest.system = [
-          { type: 'text', text: systemPrompt },
-          ...modifiedRequest.system
-        ];
-      } else {
-        // 否则创建新的 system 数组
+
+    if (overrideUserSystem) {
+      // Override 模式：只使用配置的 systemPrompt，丢弃用户的 system
+      if (systemPrompt) {
         modifiedRequest.system = [
           { type: 'text', text: systemPrompt }
         ];
+      } else {
+        delete modifiedRequest.system;
+      }
+    } else {
+      // 默认模式：配置的 systemPrompt + 用户的 system
+      if (systemPrompt) {
+        if (modifiedRequest.system && Array.isArray(modifiedRequest.system)) {
+          modifiedRequest.system = [
+            { type: 'text', text: systemPrompt },
+            ...modifiedRequest.system
+          ];
+        } else {
+          modifiedRequest.system = [
+            { type: 'text', text: systemPrompt }
+          ];
+        }
       }
     }
 
