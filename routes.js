@@ -13,6 +13,14 @@ import { getNextProxyAgent } from './proxy-manager.js';
 const router = express.Router();
 
 /**
+ * 替换 system prompt 中的 "Claude Code" 为 "Droid Code"（不区分大小写）
+ */
+function replaceClaudeCode(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/claude code/gi, 'Droid Code');
+}
+
+/**
  * Convert a /v1/responses API result to a /v1/chat/completions-compatible format.
  * Works for non-streaming responses.
  */
@@ -442,11 +450,11 @@ async function handleDirectMessages(req, res) {
 
     // 处理 system 字段，根据 override_user_system 配置决定行为
     const systemPrompt = getSystemPrompt();
-    const overrideUserSystem = getOverrideUserSystem();
+    const overrideMode = getOverrideUserSystem(); // 'discard', 'replace', 'off'
     const modifiedRequest = { ...anthropicRequest, model: modelId };
 
-    if (overrideUserSystem) {
-      // Override 模式：只使用配置的 systemPrompt，丢弃用户的 system
+    if (overrideMode === 'discard') {
+      // Discard 模式：只使用配置的 systemPrompt，丢弃用户的 system
       if (systemPrompt) {
         modifiedRequest.system = [
           { type: 'text', text: systemPrompt }
@@ -454,8 +462,25 @@ async function handleDirectMessages(req, res) {
       } else {
         delete modifiedRequest.system;
       }
+    } else if (overrideMode === 'replace') {
+      // Replace 模式：替换用户 system 中的 "Claude Code" 为 "Droid Code"
+      if (modifiedRequest.system && Array.isArray(modifiedRequest.system)) {
+        modifiedRequest.system = modifiedRequest.system.map(item => {
+          if (item.type === 'text' && item.text) {
+            return { ...item, text: replaceClaudeCode(item.text) };
+          }
+          return item;
+        });
+      }
+      // 在前面插入配置的 systemPrompt
+      if (systemPrompt) {
+        modifiedRequest.system = [
+          { type: 'text', text: systemPrompt },
+          ...(modifiedRequest.system || [])
+        ];
+      }
     } else {
-      // 默认模式：配置的 systemPrompt + 用户的 system
+      // Off 模式：配置的 systemPrompt + 原始用户 system
       if (systemPrompt) {
         if (modifiedRequest.system && Array.isArray(modifiedRequest.system)) {
           modifiedRequest.system = [

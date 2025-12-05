@@ -54,7 +54,15 @@ export function getSystemPrompt() {
 
 export function getOverrideUserSystem() {
   const cfg = getConfig();
-  return cfg.override_user_system === true;
+  const value = cfg.override_user_system;
+  // 支持新模式：'discard', 'replace', 'off'
+  // 兼容旧模式：true -> 'discard', false -> 'off'
+  if (value === true || value === 'discard') {
+    return 'discard';
+  } else if (value === 'replace') {
+    return 'replace';
+  }
+  return 'off';
 }
 
 export function getModelReasoning(modelId) {

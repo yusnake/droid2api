@@ -1,6 +1,14 @@
 import { logDebug } from '../logger.js';
 import { getSystemPrompt, getModelReasoning, getUserAgent, getOverrideUserSystem } from '../config.js';
 
+/**
+ * 替换 system prompt 中的 "Claude Code" 为 "Droid Code"（不区分大小写）
+ */
+function replaceClaudeCode(text) {
+  if (!text || typeof text !== 'string') return text;
+  return text.replace(/claude code/gi, 'Droid Code');
+}
+
 export function transformToAnthropic(openaiRequest) {
   logDebug('Transforming OpenAI request to Anthropic format');
   
@@ -84,18 +92,35 @@ export function transformToAnthropic(openaiRequest) {
 
   // 处理 system，根据 override_user_system 配置决定行为
   const systemPrompt = getSystemPrompt();
-  const overrideUserSystem = getOverrideUserSystem();
+  const overrideMode = getOverrideUserSystem(); // 'discard', 'replace', 'off'
 
-  if (overrideUserSystem) {
-    // Override 模式：只使用配置的 systemPrompt，丢弃用户的 system
+  if (overrideMode === 'discard') {
+    // Discard 模式：只使用配置的 systemPrompt，丢弃用户的 system
     if (systemPrompt) {
       anthropicRequest.system = [{
         type: 'text',
         text: systemPrompt
       }];
     }
+  } else if (overrideMode === 'replace') {
+    // Replace 模式：替换用户 system 中的 "Claude Code" 为 "Droid Code"
+    const replacedSystemContent = systemContent.map(item => {
+      if (item.type === 'text' && item.text) {
+        return { ...item, text: replaceClaudeCode(item.text) };
+      }
+      return item;
+    });
+
+    anthropicRequest.system = [];
+    if (systemPrompt) {
+      anthropicRequest.system.push({
+        type: 'text',
+        text: systemPrompt
+      });
+    }
+    anthropicRequest.system.push(...replacedSystemContent);
   } else {
-    // 默认模式：配置的 systemPrompt + 用户的 system
+    // Off 模式：配置的 systemPrompt + 原始用户 system
     if (systemPrompt || systemContent.length > 0) {
       anthropicRequest.system = [];
       if (systemPrompt) {
